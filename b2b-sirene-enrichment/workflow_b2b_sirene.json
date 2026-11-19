@@ -1,0 +1,260 @@
+{
+  "name": "[B2B-CRM] Ingestion & Enrichissement Légal SIRENE",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "prospect-entrant",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "prospect-entrant"
+    },
+    {
+      "parameters": {
+        "url": "https://recherche-entreprises.api.gouv.fr/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.query.nom_saisi }}"
+            },
+            {
+              "name": "per_page",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "prospect_id",
+              "value": "={{ $('Webhook').item.json.query.prospect_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "nom_saisi",
+              "value": "={{ $('Webhook').item.json.query.nom_saisi }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "email_contact",
+              "value": "={{ $('Webhook').item.json.query.contact_email }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "siren",
+              "value": "={{ $json.results[0]?.siren || 'INTROUVABLE' }}",
+              "type": "string"
+            },
+            {
+              "id": "f5",
+              "name": "denomination_legale",
+              "value": "={{ $json.results[0]?.nom_complet || 'NON_TROUVEE' }}",
+              "type": "string"
+            },
+            {
+              "id": "f6",
+              "name": "code_naf",
+              "value": "={{ $json.results[0]?.activite_principale || 'N/A' }}",
+              "type": "string"
+            },
+            {
+              "id": "f7",
+              "name": "adresse_siege",
+              "value": "={{ $json.results[0]?.siege?.adresse || 'N/A' }}",
+              "type": "string"
+            },
+            {
+              "id": "f8",
+              "name": "statut",
+              "value": "={{ $json.total_results > 0 ? 'CERTIFIE' : 'A_TRAITER_MANUELLEMENT' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.statut }}",
+              "rightValue": "CERTIFIE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "crm1",
+              "name": "action_crm",
+              "value": "CREER_OU_METTRE_A_JOUR",
+              "type": "string"
+            },
+            {
+              "id": "crm2",
+              "name": "nom_entreprise_certifie",
+              "value": "={{ $json.denomination_legale }}",
+              "type": "string"
+            },
+            {
+              "id": "crm3",
+              "name": "numero_siren",
+              "value": "={{ $json.siren }}",
+              "type": "string"
+            },
+            {
+              "id": "crm4",
+              "name": "adresse_complete",
+              "value": "={{ $json.adresse_siege }}",
+              "type": "string"
+            },
+            {
+              "id": "crm5",
+              "name": "contact_principal",
+              "value": "={{ $json.email_contact }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5",
+      "name": "Formatage Fiche CRM",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "alt1",
+              "name": "type_action",
+              "value": "VERIFICATION_MANUELLE_REQUISE",
+              "type": "string"
+            },
+            {
+              "id": "alt2",
+              "name": "message_alerte",
+              "value": "=⚠️ ALERTE : Le prospect {{ $json.prospect_id }} ({{ $json.nom_saisi }}) avec l'email {{ $json.email_contact }} est introuvable au registre SIRENE. Merci de contacter le prospect pour clarifier sa raison sociale.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6",
+      "name": "Alerte Commerciale",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Formatage Fiche CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alerte Commerciale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
